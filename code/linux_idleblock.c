@@ -43,6 +43,9 @@ dbus_message_iter_open_container(Current-1, type, signature, Current), \
 #define ScopedMethod(name, a, b, c, d) for(DBusMessage *name = dbus_message_new_method_call(a, b, c, d); \
 name; \
 dbus_message_unref(name), name = 0)
+#define ScopedMethodResult(message, name) for(DBusMessage *name = dbus_connection_send_with_reply_and_block(Connection, message, DBUS_TIMEOUT_INFINITE, &Error); \
+name; \
+dbus_message_unref(name), name = 0)
 #define ScopedReply(message, name) for(DBusMessage *name = dbus_message_new_method_return(message); \
 name; \
 dbus_message_unref(name), name = 0)
@@ -124,7 +127,8 @@ main(void)
     }
     
     u32 MenuRevision = 0;
-    
+    u32 BlockingCookie = 0;
+    b32 Blocking = false;
     b32 Running = true;
     while(Running)
     {
@@ -134,7 +138,48 @@ main(void)
             Message;
             dbus_message_unref(Message), Message = dbus_connection_pop_message(Connection))
         {
-            if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetLayout"))
+            if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "Activate"))
+            {
+                if(!Blocking)
+                {
+                    ScopedMethod(Request, "org.freedesktop.ScreenSaver", "/ScreenSaver",
+                                 "org.freedesktop.ScreenSaver", "Inhibit")
+                    {
+                        InitAppendIterWithStack(Request);
+                        
+                        AppendBasic(DBUS_TYPE_STRING, "IdleBlock");
+                        AppendBasic(DBUS_TYPE_STRING, "Activated");
+                        
+                        ScopedMethodResult(Request, Result)
+                        {
+                            InitReadIter(Result);
+                            GetBasic(&BlockingCookie);
+                            Blocking = true;
+                        }
+                    }
+                }
+                else
+                {
+                    ScopedMethod(Request, "org.freedesktop.ScreenSaver", "/ScreenSaver",
+                                 "org.freedesktop.ScreenSaver", "UnInhibit")
+                    {
+                        InitAppendIterWithStack(Request);
+                        
+                        AppendBasic(DBUS_TYPE_UINT32, BlockingCookie);
+                        
+                        ScopedMethodResult(Request, Result)
+                        {
+                            Blocking = false;
+                        }
+                    }
+                }
+            }
+            else if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "ContextMenu"))
+            {
+                // NOTE(maria): sway compat
+                Running = false;
+            }
+            else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetLayout"))
             {
                 ScopedReply(Message, Reply)
                 {
