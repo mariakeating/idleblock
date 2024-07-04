@@ -300,13 +300,13 @@ main(void)
                     
                     AppendBasic(DBUS_TYPE_UINT32, MenuRevision++);
                     
-                    AppendContainer(DBUS_TYPE_STRUCT, "ia{sv}av") // Root
+                    AppendContainer(DBUS_TYPE_STRUCT, 0) // Root
                     {
                         AppendBasic(DBUS_TYPE_INT32, MenuID_Root);
                         
                         AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
                         {
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "children-display");
                                 AppendVariant("s", DBUS_TYPE_STRING, "submenu");
@@ -318,13 +318,13 @@ main(void)
                             // Quit
                             AppendContainer(DBUS_TYPE_VARIANT, "(ia{sv}av)")
                             {
-                                AppendContainer(DBUS_TYPE_STRUCT, "ia{sv}av")
+                                AppendContainer(DBUS_TYPE_STRUCT, 0)
                                 {
                                     AppendBasic(DBUS_TYPE_INT32, MenuID_Quit);
                                     
                                     AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
                                     {
-                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                                         {
                                             AppendBasic(DBUS_TYPE_STRING, "label");
                                             AppendVariant("s", DBUS_TYPE_STRING, "Quit");
@@ -393,37 +393,37 @@ main(void)
                         
                         AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
                         {
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Category");
                                 AppendVariant("s", DBUS_TYPE_STRING, "ApplicationStatus");
                             }
                             
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Id");
                                 AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
                             }
                             
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Title");
                                 AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
                             }
                             
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Status");
                                 AppendVariant("s", DBUS_TYPE_STRING, "Active");
                             }
                             
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Menu");
-                                AppendVariant("o", DBUS_TYPE_STRING, "/TrayMenu");
+                                AppendVariant("o", DBUS_TYPE_OBJECT_PATH, "/TrayMenu");
                             }
                             
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "IconPixmap");
                                 
@@ -431,7 +431,7 @@ main(void)
                                 {
                                     AppendContainer(DBUS_TYPE_ARRAY, "(iiay)")
                                     {
-                                        AppendContainer(DBUS_TYPE_STRUCT, "iiay")
+                                        AppendContainer(DBUS_TYPE_STRUCT, 0)
                                         {
                                             image32 Icon = Blocking ? ActiveIcon : InactiveIcon;
                                             
