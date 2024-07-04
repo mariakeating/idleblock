@@ -1,5 +1,7 @@
+#include <unistd.h>
 #include <dbus/dbus.h>
 #include <sys/mman.h>
+#include <stdio.h>
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -351,7 +353,14 @@ main(void)
                  "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem")
     {
         InitAppendIterWithStack(Query);
-        AppendBasic(DBUS_TYPE_STRING, UniqueName);
+        
+        char NotiName[64];
+        snprintf(NotiName, sizeof(NotiName), "org.freedesktop.StatusNotifierItem-%d-1", getpid());
+        
+        // TODO(maria): check and retry
+        dbus_bus_request_name(Connection, NotiName, 0, &Error);
+        
+        AppendBasic(DBUS_TYPE_STRING, NotiName);
         
         dbus_connection_send(Connection, Query, 0);
     }
