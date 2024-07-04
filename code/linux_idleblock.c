@@ -145,7 +145,7 @@ main(void)
     b32 Running = true;
     while(Running)
     {
-        dbus_connection_read_write(Connection, 0);
+        dbus_connection_read_write(Connection, -1);
         
         for(DBusMessage *Message = dbus_connection_pop_message(Connection);
             Message;
