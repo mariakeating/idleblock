@@ -38,7 +38,7 @@ dbus_message_iter_open_container(Current-1, type, signature, Current), \
 !CAT(_i_, __LINE__); \
 ++CAT(_i_, __LINE__), dbus_message_iter_close_container(Current-1, Current), --Current)
 
-#define GetBasic(data) dbus_message_iter_get_basic(Current, data)
+#define GetBasic(data) dbus_message_iter_get_basic(Current, data); dbus_message_iter_next(Current)
 
 #define ScopedMethod(name, a, b, c, d) for(DBusMessage *name = dbus_message_new_method_call(a, b, c, d); \
 name; \
@@ -123,6 +123,8 @@ main(void)
         dbus_connection_send(Connection, Query, 0);
     }
     
+    u32 MenuRevision = 0;
+    
     b32 Running = true;
     while(Running)
     {
@@ -134,6 +136,84 @@ main(void)
         {
             if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetLayout"))
             {
+                ScopedReply(Message, Reply)
+                {
+                    InitAppendIterWithStack(Reply);
+                    
+                    AppendBasic(DBUS_TYPE_UINT32, MenuRevision++);
+                    
+                    AppendContainer(DBUS_TYPE_STRUCT, "ia{sv}av") // Root
+                    {
+                        AppendBasic(DBUS_TYPE_INT32, MenuID_Root);
+                        
+                        AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
+                        {
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                            {
+                                AppendBasic(DBUS_TYPE_STRING, "children-display");
+                                AppendVariant("s", DBUS_TYPE_STRING, "submenu");
+                            }
+                        }
+                        
+                        AppendContainer(DBUS_TYPE_ARRAY, "v") // Children
+                        {
+                            // Quit
+                            AppendContainer(DBUS_TYPE_VARIANT, "(ia{sv}av)")
+                            {
+                                AppendContainer(DBUS_TYPE_STRUCT, "ia{sv}av")
+                                {
+                                    AppendBasic(DBUS_TYPE_INT32, MenuID_Quit);
+                                    
+                                    AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
+                                    {
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
+                                        {
+                                            AppendBasic(DBUS_TYPE_STRING, "label");
+                                            AppendVariant("s", DBUS_TYPE_STRING, "Quit");
+                                        }
+                                    }
+                                    
+                                    AppendContainer(DBUS_TYPE_ARRAY, "v");
+                                }
+                            }
+                        }
+                    }
+                    
+                    dbus_connection_send(Connection, Reply, 0);
+                }
+            }
+            else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "AboutToShow"))
+            {
+                ScopedReply(Message, Reply)
+                {
+                    InitAppendIterWithStack(Reply);
+                    
+                    // should update
+                    AppendBasic(DBUS_TYPE_BOOLEAN, false);
+                    
+                    dbus_connection_send(Connection, Reply, 0);
+                }
+            }
+            else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "Event"))
+            {
+                InitReadIterWithStack(Message);
+                
+                int MenuID = 0;
+                GetBasic(&MenuID);
+                
+                char *InteractionRaw = "";
+                GetBasic(&InteractionRaw);
+                string Interaction = Str(InteractionRaw);
+                
+                b32 Clicked = StringsAreEqual(Interaction, StrLit("clicked"));
+                
+                switch(MenuID)
+                {
+                    case MenuID_Quit:
+                    {
+                        Running = false;
+                    } break;
+                }
             }
             else if(dbus_message_is_method_call(Message, "org.freedesktop.DBus.Properties", "GetAll"))
             {
@@ -178,7 +258,7 @@ main(void)
                             AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
                             {
                                 AppendBasic(DBUS_TYPE_STRING, "Menu");
-                                AppendVariant("s", DBUS_TYPE_STRING, "/MenuBar");
+                                AppendVariant("o", DBUS_TYPE_STRING, "/TrayMenu");
                             }
                             
                             AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
