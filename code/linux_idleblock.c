@@ -136,6 +136,9 @@ main(void)
         dbus_connection_send(Connection, Query, 0);
     }
     
+    u32 ActiveColour = 0x00FF00FF;
+    u32 InactiveColour = 0xc6c6c6FF;
+    
     u32 MenuRevision = 0;
     u32 BlockingCookie = 0;
     b32 Blocking = false;
@@ -183,6 +186,10 @@ main(void)
                         }
                     }
                 }
+                
+                DBusMessage *Signal = dbus_message_new_signal("/StatusNotifierItem", "org.kde.StatusNotifierItem", "NewIcon");
+                dbus_connection_send(Connection, Signal, 0);
+                dbus_message_unref(Signal);
             }
             else if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "ContextMenu"))
             {
@@ -270,6 +277,10 @@ main(void)
                     } break;
                 }
             }
+            else if(dbus_message_is_method_call(Message, "org.freedesktop.DBus.Properties", "Get"))
+            {
+                // NOTE(maria): do we need to handle icon change here?
+            }
             else if(dbus_message_is_method_call(Message, "org.freedesktop.DBus.Properties", "GetAll"))
             {
                 InitReadIterWithStack(Message);
@@ -336,7 +347,7 @@ main(void)
                                                 y < 32*32;
                                                 ++y)
                                             {
-                                                ByteArray[y] = 0x00FFFFFF;
+                                                ByteArray[y] = Blocking ? ActiveColour : InactiveColour;
                                             }
                                             
                                             IterAppendBasicArray(DBUS_TYPE_BYTE, "y", ByteArray, 32*32*4);
