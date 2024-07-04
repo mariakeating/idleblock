@@ -24,6 +24,16 @@ typedef double f64;
 #define CAT2(a, b) a##b
 #define CAT(a, b) CAT2(a,b)
 
+#define IterAppendToBasicArray(type, data, count) IterAppendToBasicArray_(Current, type, (u64)data, count)
+function void
+IterAppendToBasicArray_(DBusMessageIter *Dest, int Type, u64 Data, int Count)
+{
+    dbus_message_iter_append_fixed_array(Dest, Type, &Data, Count);
+}
+
+
+#define IterAppendBasicArray(type, signature, data, count) AppendContainer(DBUS_TYPE_ARRAY, signature){IterAppendToBasicArray(type, data, count);}
+
 #define AppendBasic(type, data) AppendBasic_(Current, type, (u64)data)
 #define AppendVariant(signature, type, data) AppendContainer(DBUS_TYPE_VARIANT, signature){AppendBasic(type, data);}
 function void
@@ -308,8 +318,31 @@ main(void)
                             
                             AppendContainer(DBUS_TYPE_DICT_ENTRY, "sv")
                             {
-                                AppendBasic(DBUS_TYPE_STRING, "IconName");
-                                AppendVariant("s", DBUS_TYPE_STRING, "emacs");
+                                AppendBasic(DBUS_TYPE_STRING, "IconPixmap");
+                                
+                                AppendContainer(DBUS_TYPE_VARIANT, "a(iiay)")
+                                {
+                                    AppendContainer(DBUS_TYPE_ARRAY, "(iiay)")
+                                    {
+                                        AppendContainer(DBUS_TYPE_STRUCT, "iiay")
+                                        {
+                                            AppendBasic(DBUS_TYPE_INT32, 32);
+                                            AppendBasic(DBUS_TYPE_INT32, 32);
+                                            
+                                            u32 ByteArray[32*32] = {};
+                                            
+                                            
+                                            for(u32 y = 0;
+                                                y < 32*32;
+                                                ++y)
+                                            {
+                                                ByteArray[y] = 0x00FFFFFF;
+                                            }
+                                            
+                                            IterAppendBasicArray(DBUS_TYPE_BYTE, "y", ByteArray, 32*32*4);
+                                        }
+                                    }
+                                }
                             }
                         }
                         
