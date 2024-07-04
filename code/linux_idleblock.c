@@ -1,4 +1,5 @@
 #include <dbus/dbus.h>
+#include <sys/mman.h>
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -20,6 +21,27 @@ typedef double f64;
 
 #define function static
 #define global static
+
+#define EmbedPreprocStr2(x) #x
+#define EmbedPreprocStr(x) EmbedPreprocStr2(x)
+
+#define EmbedFile(name, file) \
+asm(".pushsection .rodata\n" \
+".global Global" EmbedPreprocStr(name) "\n" \
+".balign 16\n" \
+"Global" EmbedPreprocStr(name) ":\n" \
+".incbin \"" file "\"\n" \
+".balign 1\n" \
+".byte 0 \n" \
+".global Global" EmbedPreprocStr(name) "Size\n" \
+"Global" EmbedPreprocStr(name) "Size:\n" \
+".quad . - Global" EmbedPreprocStr(name) " - 1\n" \
+".popsection"); \
+extern __attribute__((aligned(16))) char Global##name[]; \
+extern u64 Global##name##Size
+
+EmbedFile(OnIconMemory, "../data/on.bmp");
+EmbedFile(OffIconMemory, "../data/off.bmp");
 
 #define CAT2(a, b) a##b
 #define CAT(a, b) CAT2(a,b)
@@ -110,13 +132,87 @@ StringsAreEqual(string A, string B)
     return Result;
 }
 
+#pragma pack(push, 1)
+typedef struct bitmap_header bitmap_header;
+struct bitmap_header
+{
+    u16 FileType;
+    u32 FileSize;
+    u32 Reserved;
+    u32 BitmapOffset;
+    u32 Size;
+    s32 Width;
+    s32 Height;
+    u16 Planes;
+    u16 BitsPerPixel;
+    u32 Compression;
+    u32 SizeOfBitmap;
+    s32 HorizResolution;
+    s32 VertResolution;
+    u32 ColoursUsed;
+    u32 ColoursImportant;
+    u32 RedMask;
+    u32 GreenMask;
+    u32 BlueMask;
+};
+#pragma pack(pop)
+
+typedef struct image32 image32;
+struct image32
+{
+    u32 Width;
+    u32 Height;
+    u8 *Memory;
+};
+
+function image32
+LoadBMP(void *Memory, u64 MemorySize)
+{
+    image32 Result = {};
+    
+    bitmap_header *Header = Memory;
+    
+    u8 *SourceMemory = (u8 *)Memory + Header->BitmapOffset;
+    
+    Result.Width = (u32)Header->Width;
+    Result.Height = (u32)Header->Height;
+    Result.Memory = mmap(0, Result.Width*Result.Height*4, PROT_READ|PROT_WRITE,
+                         MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+    u8 *SourceRow = SourceMemory + Result.Width*4 * (Result.Height - 1);
+    u8 *DestRow = Result.Memory;
+    for(u32 Y = 0;
+        Y < Result.Height;
+        ++Y)
+    {
+        u32 *SourcePixel = (u32 *)SourceRow;
+        u32 *DestPixel = (u32 *)DestRow;
+        for(u32 X = 0;
+            X < Result.Width;
+            ++X)
+        {
+            u32 Colour = *SourcePixel++;
+            
+            u8 Blue = (Colour >> 0) & 0xFF;
+            u8 Green = (Colour >> 8) & 0xFF;
+            u8 Red = (Colour >> 16) & 0xFF;
+            u8 Alpha = (u8)((Colour >> 24) & 0xFF);
+            
+            u32 NewColour = (((u32)Blue << 24) | ((u32)Green << 16) | ((u32)Red << 8) | ((u32)Alpha));
+            *DestPixel++ = NewColour;
+        }
+        
+        SourceRow -= Result.Width*4;
+        DestRow += Result.Width*4;
+    }
+    
+    return Result;
+}
+
 enum menu_id
 {
     MenuID_Root,
     MenuID_Quit,
 };
-
-#include <stdio.h>
 
 int
 main(void)
@@ -136,8 +232,8 @@ main(void)
         dbus_connection_send(Connection, Query, 0);
     }
     
-    u32 ActiveColour = 0x00FF00FF;
-    u32 InactiveColour = 0xc6c6c6FF;
+    image32 ActiveIcon = LoadBMP(GlobalOnIconMemory, GlobalOnIconMemorySize);
+    image32 InactiveIcon = LoadBMP(GlobalOffIconMemory, GlobalOffIconMemorySize);
     
     u32 MenuRevision = 0;
     u32 BlockingCookie = 0;
@@ -337,20 +433,12 @@ main(void)
                                     {
                                         AppendContainer(DBUS_TYPE_STRUCT, "iiay")
                                         {
-                                            AppendBasic(DBUS_TYPE_INT32, 32);
-                                            AppendBasic(DBUS_TYPE_INT32, 32);
+                                            image32 Icon = Blocking ? ActiveIcon : InactiveIcon;
                                             
-                                            u32 ByteArray[32*32] = {};
+                                            AppendBasic(DBUS_TYPE_INT32, Icon.Width);
+                                            AppendBasic(DBUS_TYPE_INT32, Icon.Height);
                                             
-                                            
-                                            for(u32 y = 0;
-                                                y < 32*32;
-                                                ++y)
-                                            {
-                                                ByteArray[y] = Blocking ? ActiveColour : InactiveColour;
-                                            }
-                                            
-                                            IterAppendBasicArray(DBUS_TYPE_BYTE, "y", ByteArray, 32*32*4);
+                                            IterAppendBasicArray(DBUS_TYPE_BYTE, "y", Icon.Memory, (int)(Icon.Width*Icon.Height*4));
                                         }
                                     }
                                 }
