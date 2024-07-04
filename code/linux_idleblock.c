@@ -22,6 +22,8 @@ typedef double f64;
 #define function static
 #define global static
 
+#define ArrayCount(array) (sizeof(array)/sizeof((array)[0]))
+
 #define EmbedPreprocStr2(x) #x
 #define EmbedPreprocStr(x) EmbedPreprocStr2(x)
 
@@ -210,13 +212,135 @@ LoadBMP(void *Memory, u64 MemorySize)
 
 enum menu_id
 {
+    MenuID_Invalid,
     MenuID_Root,
     MenuID_Quit,
 };
 
+typedef struct linux_state linux_state;
+struct linux_state
+{
+    b32 Blocking;
+    u32 BlockingCookie;
+    image32 ActiveIcon;
+    image32 InactiveIcon;
+};
+
+global b32 GlobalRunning;
+global linux_state GlobalLinuxState;
+
+#include<stdio.h>
+
+typedef enum tray_property tray_property;
+enum tray_property
+{
+    TrayProperty_Category,
+    TrayProperty_ID,
+    TrayProperty_Title,
+    TrayProperty_Status,
+    TrayProperty_Menu,
+    TrayProperty_ItemIsMenu,
+    TrayProperty_IconName,
+    TrayProperty_IconThemePath,
+    TrayProperty_IconPixmap,
+    
+    TrayProperty_Count,
+};
+
+global char *TrayPropertyNames[] =
+{
+    "Category",
+    "Id",
+    "Title",
+    "Status",
+    "Menu",
+    "ItemIsMenu",
+    "IconName",
+    "IconThemePath",
+    "IconPixmap",
+};
+
+_Static_assert(ArrayCount(TrayPropertyNames) == TrayProperty_Count, "Property name count not equal to amount of properties.");
+
+#define AppendTrayProperty(property) AppendTrayProperty_(Current, property)
+function void
+AppendTrayProperty_(DBusMessageIter *Current, tray_property Property)
+{
+    linux_state *State = &GlobalLinuxState;
+    
+    switch(Property)
+    {
+        case TrayProperty_Category:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "SystemServices");
+        } break;
+        
+        case TrayProperty_ID:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
+        } break;
+        
+        case TrayProperty_Title:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
+        } break;
+        
+        case TrayProperty_Status:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "Active");
+        } break;
+        
+        case TrayProperty_Menu:
+        {
+            AppendVariant("o", DBUS_TYPE_OBJECT_PATH, "/TrayMenu");
+        } break;
+        
+        case TrayProperty_ItemIsMenu:
+        {
+            AppendVariant("b", DBUS_TYPE_BOOLEAN, false);
+        } break;
+        
+        case TrayProperty_IconName:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "");
+        } break;
+        
+        case TrayProperty_IconThemePath:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "");
+        } break;
+        
+        case TrayProperty_IconPixmap:
+        {
+            AppendContainer(DBUS_TYPE_VARIANT, "a(iiay)")
+            {
+                AppendContainer(DBUS_TYPE_ARRAY, "(iiay)")
+                {
+                    AppendContainer(DBUS_TYPE_STRUCT, 0)
+                    {
+                        image32 Icon = State->Blocking ? State->ActiveIcon : State->InactiveIcon;
+                        
+                        AppendBasic(DBUS_TYPE_INT32, Icon.Width);
+                        AppendBasic(DBUS_TYPE_INT32, Icon.Height);
+                        
+                        IterAppendBasicArray(DBUS_TYPE_BYTE, "y", Icon.Memory, (int)(Icon.Width*Icon.Height*4));
+                    }
+                }
+            }
+        } break;
+        
+        default:{}break;
+    };
+}
+
 int
 main(void)
 {
+    linux_state *State = &GlobalLinuxState;
+    
+    State->ActiveIcon = LoadBMP(GlobalOnIconMemory, GlobalOnIconMemorySize);
+    State->InactiveIcon = LoadBMP(GlobalOffIconMemory, GlobalOffIconMemorySize);
+    
     DBusError Error = {};
     dbus_error_init(&Error);
     DBusConnection *Connection = dbus_bus_get(DBUS_BUS_SESSION, &Error);
@@ -232,14 +356,9 @@ main(void)
         dbus_connection_send(Connection, Query, 0);
     }
     
-    image32 ActiveIcon = LoadBMP(GlobalOnIconMemory, GlobalOnIconMemorySize);
-    image32 InactiveIcon = LoadBMP(GlobalOffIconMemory, GlobalOffIconMemorySize);
-    
     u32 MenuRevision = 0;
-    u32 BlockingCookie = 0;
-    b32 Blocking = false;
-    b32 Running = true;
-    while(Running)
+    GlobalRunning = true;
+    while(GlobalRunning)
     {
         dbus_connection_read_write(Connection, -1);
         
@@ -249,7 +368,7 @@ main(void)
         {
             if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "Activate"))
             {
-                if(!Blocking)
+                if(!State->Blocking)
                 {
                     ScopedMethod(Request, "org.freedesktop.ScreenSaver", "/ScreenSaver",
                                  "org.freedesktop.ScreenSaver", "Inhibit")
@@ -262,8 +381,8 @@ main(void)
                         ScopedMethodResult(Request, Result)
                         {
                             InitReadIter(Result);
-                            GetBasic(&BlockingCookie);
-                            Blocking = true;
+                            GetBasic(&State->BlockingCookie);
+                            State->Blocking = true;
                         }
                     }
                 }
@@ -274,11 +393,11 @@ main(void)
                     {
                         InitAppendIterWithStack(Request);
                         
-                        AppendBasic(DBUS_TYPE_UINT32, BlockingCookie);
+                        AppendBasic(DBUS_TYPE_UINT32, State->BlockingCookie);
                         
                         ScopedMethodResult(Request, Result)
                         {
-                            Blocking = false;
+                            State->Blocking = false;
                         }
                     }
                 }
@@ -290,7 +409,7 @@ main(void)
             else if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "ContextMenu"))
             {
                 // NOTE(maria): sway compat
-                Running = false;
+                GlobalRunning = false;
             }
             else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetLayout"))
             {
@@ -369,13 +488,41 @@ main(void)
                 {
                     case MenuID_Quit:
                     {
-                        Running = false;
+                        GlobalRunning = false;
                     } break;
                 }
             }
             else if(dbus_message_is_method_call(Message, "org.freedesktop.DBus.Properties", "Get"))
             {
                 // NOTE(maria): do we need to handle icon change here?
+                InitReadIterWithStack(Message);
+                char *RequestedInterfaceRaw = "";
+                GetBasic(&RequestedInterfaceRaw);
+                string RequestedInterface = Str(RequestedInterfaceRaw);
+                
+                char *RequestedPropertyRaw = "";
+                GetBasic(&RequestedPropertyRaw);
+                string RequestedProperty = Str(RequestedPropertyRaw);
+                
+                ScopedReply(Message, Reply)
+                {
+                    InitAppendIter(Reply);
+                    
+                    if(StringsAreEqual(RequestedInterface, StrLit("org.kde.StatusNotifierItem")))
+                    {
+                        for(u32 PropertyIndex = 0;
+                            PropertyIndex < TrayProperty_Count;
+                            ++PropertyIndex)
+                        {
+                            if(StringsAreEqual(RequestedProperty, StrLit(TrayPropertyNames[PropertyIndex])))
+                            {
+                                AppendTrayProperty(PropertyIndex);
+                            }
+                        }
+                    }
+                    
+                    dbus_connection_send(Connection, Reply, 0);
+                }
             }
             else if(dbus_message_is_method_call(Message, "org.freedesktop.DBus.Properties", "GetAll"))
             {
@@ -393,54 +540,14 @@ main(void)
                         
                         AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
                         {
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            for(u32 PropertyIndex = 0;
+                                PropertyIndex < TrayProperty_Count;
+                                ++PropertyIndex)
                             {
-                                AppendBasic(DBUS_TYPE_STRING, "Category");
-                                AppendVariant("s", DBUS_TYPE_STRING, "ApplicationStatus");
-                            }
-                            
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
-                            {
-                                AppendBasic(DBUS_TYPE_STRING, "Id");
-                                AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
-                            }
-                            
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
-                            {
-                                AppendBasic(DBUS_TYPE_STRING, "Title");
-                                AppendVariant("s", DBUS_TYPE_STRING, "IdleBlock");
-                            }
-                            
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
-                            {
-                                AppendBasic(DBUS_TYPE_STRING, "Status");
-                                AppendVariant("s", DBUS_TYPE_STRING, "Active");
-                            }
-                            
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
-                            {
-                                AppendBasic(DBUS_TYPE_STRING, "Menu");
-                                AppendVariant("o", DBUS_TYPE_OBJECT_PATH, "/TrayMenu");
-                            }
-                            
-                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
-                            {
-                                AppendBasic(DBUS_TYPE_STRING, "IconPixmap");
-                                
-                                AppendContainer(DBUS_TYPE_VARIANT, "a(iiay)")
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                                 {
-                                    AppendContainer(DBUS_TYPE_ARRAY, "(iiay)")
-                                    {
-                                        AppendContainer(DBUS_TYPE_STRUCT, 0)
-                                        {
-                                            image32 Icon = Blocking ? ActiveIcon : InactiveIcon;
-                                            
-                                            AppendBasic(DBUS_TYPE_INT32, Icon.Width);
-                                            AppendBasic(DBUS_TYPE_INT32, Icon.Height);
-                                            
-                                            IterAppendBasicArray(DBUS_TYPE_BYTE, "y", Icon.Memory, (int)(Icon.Width*Icon.Height*4));
-                                        }
-                                    }
+                                    AppendBasic(DBUS_TYPE_STRING, TrayPropertyNames[PropertyIndex]);
+                                    AppendTrayProperty(PropertyIndex);
                                 }
                             }
                         }
