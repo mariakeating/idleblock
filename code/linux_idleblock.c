@@ -214,7 +214,6 @@ LoadBMP(void *Memory, u64 MemorySize)
 
 enum menu_id
 {
-    MenuID_Invalid,
     MenuID_Root,
     MenuID_Quit,
 };
@@ -232,6 +231,55 @@ global b32 GlobalRunning;
 global linux_state GlobalLinuxState;
 
 #include<stdio.h>
+typedef enum menu_property menu_property;
+enum menu_property
+{
+    MenuProperty_Version,
+    MenuProperty_TextDirection,
+    MenuProperty_Status,
+    MenuProperty_IconThemePath,
+    
+    MenuProperty_Count,
+};
+
+global char *MenuPropertyNames[] =
+{
+    "Version",
+    "TextDirection",
+    "Status",
+    "IconThemePath",
+};
+_Static_assert(ArrayCount(MenuPropertyNames) == MenuProperty_Count, "Menu property name count not equal to amount of properties.");
+
+#define AppendMenuProperty(property) AppendTrayProperty_(Current, property)
+function void
+AppendMenuProperty_(DBusMessageIter *Current, menu_property Property)
+{
+    switch(Property)
+    {
+        case MenuProperty_Version:
+        {
+            AppendVariant("u", DBUS_TYPE_UINT32, 2);
+        } break;
+        
+        case MenuProperty_TextDirection:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "ltr");
+        } break;
+        
+        case MenuProperty_Status:
+        {
+            AppendVariant("s", DBUS_TYPE_STRING, "normal");
+        } break;
+        
+        case MenuProperty_IconThemePath:
+        {
+            AppendContainer(DBUS_TYPE_ARRAY, "s");
+        } break;
+        
+        default:{}break;
+    }
+}
 
 typedef enum tray_property tray_property;
 enum tray_property
@@ -262,7 +310,7 @@ global char *TrayPropertyNames[] =
     "IconPixmap",
 };
 
-_Static_assert(ArrayCount(TrayPropertyNames) == TrayProperty_Count, "Property name count not equal to amount of properties.");
+_Static_assert(ArrayCount(TrayPropertyNames) == TrayProperty_Count, "Tray property name count not equal to amount of properties.");
 
 #define AppendTrayProperty(property) AppendTrayProperty_(Current, property)
 function void
@@ -375,6 +423,13 @@ main(void)
             Message;
             dbus_message_unref(Message), Message = dbus_connection_pop_message(Connection))
         {
+#if 0
+            const char *Dest_ = dbus_message_get_destination(Message);
+            const char *Interface_ = dbus_message_get_interface(Message);
+            const char *Member_ = dbus_message_get_member(Message);
+            printf("%s %s %s\n", Dest_, Interface_, Member_);
+#endif
+            
             if(dbus_message_is_method_call(Message, "org.kde.StatusNotifierItem", "Activate"))
             {
                 if(!State->Blocking)
@@ -557,6 +612,29 @@ main(void)
                                 {
                                     AppendBasic(DBUS_TYPE_STRING, TrayPropertyNames[PropertyIndex]);
                                     AppendTrayProperty(PropertyIndex);
+                                }
+                            }
+                        }
+                        
+                        dbus_connection_send(Connection, Reply, 0);
+                    }
+                }
+                else if(StringsAreEqual(RequestedInterface, StrLit("com.canonical.dbusmenu")))
+                {
+                    ScopedReply(Message, Reply)
+                    {
+                        InitAppendIter(Reply);
+                        
+                        AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
+                        {
+                            for(u32 PropertyIndex = 0;
+                                PropertyIndex < MenuProperty_Count;
+                                ++PropertyIndex)
+                            {
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, MenuPropertyNames[PropertyIndex]);
+                                    AppendMenuProperty(PropertyIndex);
                                 }
                             }
                         }
