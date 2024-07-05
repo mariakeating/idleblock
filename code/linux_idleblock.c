@@ -73,8 +73,14 @@ dbus_message_iter_open_container(Current-1, type, signature, Current), \
 0); \
 !CAT(_i_, __LINE__); \
 ++CAT(_i_, __LINE__), dbus_message_iter_close_container(Current-1, Current), --Current)
-
+#define ReadContainer() for(int CAT(_i_, __LINE__) = (++Current, \
+dbus_message_iter_recurse(Current-1, Current), \
+0); \
+!CAT(_i_, __LINE__); \
+++CAT(_i_, __LINE__), --Current)
+#define GetCurrentArrayCount(Data) dbus_message_iter_get_element_count(Current)
 #define GetBasic(data) dbus_message_iter_get_basic(Current, data); dbus_message_iter_next(Current)
+#define AdvanceIter() dbus_message_iter_next(Current)
 
 #define ScopedMethod(name, a, b, c, d) for(DBusMessage *name = dbus_message_new_method_call(a, b, c, d); \
 name; \
@@ -423,7 +429,7 @@ main(void)
             Message;
             dbus_message_unref(Message), Message = dbus_connection_pop_message(Connection))
         {
-#if 0
+#if 1
             const char *Dest_ = dbus_message_get_destination(Message);
             const char *Interface_ = dbus_message_get_interface(Message);
             const char *Member_ = dbus_message_get_member(Message);
@@ -477,11 +483,36 @@ main(void)
             }
             else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetLayout"))
             {
+                InitReadIterWithStack(Message);
+                
+                s32 ParentID = 0;
+                GetBasic(&ParentID);
+                
+                s32 Depth = 0;
+                GetBasic(&Depth);
+                
+                printf("    GetLayout: %d %d\n", ParentID, Depth);
+                
+                s32 PropertyCount = GetCurrentArrayCount();
+                ReadContainer()
+                {
+                    for(s32 Index = 0;
+                        Index < PropertyCount;
+                        ++Index)
+                    {
+#if 0
+                        char *Name = "";
+                        GetBasic(&Name);
+                        printf("        %s\n", Name);
+#endif
+                    }
+                }
+                
                 ScopedReply(Message, Reply)
                 {
-                    InitAppendIterWithStack(Reply);
+                    InitAppendIter(Reply);
                     
-                    AppendBasic(DBUS_TYPE_UINT32, MenuRevision++);
+                    AppendBasic(DBUS_TYPE_UINT32, MenuRevision);
                     
                     AppendContainer(DBUS_TYPE_STRUCT, 0) // Root
                     {
@@ -491,8 +522,38 @@ main(void)
                         {
                             AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                             {
+                                AppendBasic(DBUS_TYPE_STRING, "type");
+                                AppendVariant("s", DBUS_TYPE_STRING, "standard");
+                            }
+                            
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            {
+                                AppendBasic(DBUS_TYPE_STRING, "label");
+                                AppendVariant("s", DBUS_TYPE_STRING, "");
+                            }
+                            
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            {
+                                AppendBasic(DBUS_TYPE_STRING, "visible");
+                                AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                            }
+                            
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            {
+                                AppendBasic(DBUS_TYPE_STRING, "enabled");
+                                AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                            }
+                            
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            {
                                 AppendBasic(DBUS_TYPE_STRING, "children-display");
                                 AppendVariant("s", DBUS_TYPE_STRING, "submenu");
+                            }
+                            
+                            AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                            {
+                                AppendBasic(DBUS_TYPE_STRING, "accessible-desc");
+                                AppendVariant("s", DBUS_TYPE_STRING, "");
                             }
                         }
                         
@@ -509,12 +570,163 @@ main(void)
                                     {
                                         AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
                                         {
+                                            AppendBasic(DBUS_TYPE_STRING, "type");
+                                            AppendVariant("s", DBUS_TYPE_STRING, "standard");
+                                        }
+                                        
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                        {
                                             AppendBasic(DBUS_TYPE_STRING, "label");
                                             AppendVariant("s", DBUS_TYPE_STRING, "Quit");
+                                        }
+                                        
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                        {
+                                            AppendBasic(DBUS_TYPE_STRING, "visible");
+                                            AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                        }
+                                        
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                        {
+                                            AppendBasic(DBUS_TYPE_STRING, "enabled");
+                                            AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                        }
+                                        
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                        {
+                                            AppendBasic(DBUS_TYPE_STRING, "children-display");
+                                            AppendVariant("s", DBUS_TYPE_STRING, "");
+                                        }
+                                        
+                                        AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                        {
+                                            AppendBasic(DBUS_TYPE_STRING, "accessible-desc");
+                                            AppendVariant("s", DBUS_TYPE_STRING, "");
                                         }
                                     }
                                     
                                     AppendContainer(DBUS_TYPE_ARRAY, "v");
+                                }
+                            }
+                        }
+                    }
+                    
+                    dbus_connection_send(Connection, Reply, 0);
+                }
+            }
+            else if(dbus_message_is_method_call(Message, "com.canonical.dbusmenu", "GetGroupProperties"))
+            {
+                InitReadIterWithStack(Message);
+                
+                s32 IDCount = GetCurrentArrayCount();
+                ReadContainer()
+                {
+                    for(s32 IDIndex = 0;
+                        IDIndex < IDCount;
+                        ++IDIndex)
+                    {
+                        s32 ID = 0;
+                        GetBasic(&ID);
+                        printf("    ID=%d\n", ID);
+                    }
+                }
+                
+                AdvanceIter();
+                s32 PropertyCount = GetCurrentArrayCount();
+                printf("IDCount = %d, PropertyCount = %d\n", IDCount, PropertyCount);
+                
+                
+                ScopedReply(Message, Reply)
+                {
+                    InitAppendIter(Reply);
+                    
+                    AppendContainer(DBUS_TYPE_ARRAY, "(ia{sv})")
+                    {
+                        // Root
+                        AppendContainer(DBUS_TYPE_STRUCT, 0)
+                        {
+                            AppendBasic(DBUS_TYPE_INT32, 0);
+                            
+                            AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
+                            {
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "type");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "standard");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "label");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "visible");
+                                    AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "enabled");
+                                    AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "children-display");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "submenu");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "accessible-desc");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "");
+                                }
+                            }
+                            
+                        }
+                        
+                        AppendContainer(DBUS_TYPE_STRUCT, 0)
+                        {
+                            AppendBasic(DBUS_TYPE_INT32, 1);
+                            AppendContainer(DBUS_TYPE_ARRAY, "{sv}")
+                            {
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "type");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "standard");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "label");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "Quit");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "visible");
+                                    AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "enabled");
+                                    AppendVariant("b", DBUS_TYPE_BOOLEAN, true);
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "children-display");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "");
+                                }
+                                
+                                AppendContainer(DBUS_TYPE_DICT_ENTRY, 0)
+                                {
+                                    AppendBasic(DBUS_TYPE_STRING, "accessible-desc");
+                                    AppendVariant("s", DBUS_TYPE_STRING, "");
                                 }
                             }
                         }
@@ -581,6 +793,18 @@ main(void)
                             if(StringsAreEqual(RequestedProperty, StrLit(TrayPropertyNames[PropertyIndex])))
                             {
                                 AppendTrayProperty(PropertyIndex);
+                            }
+                        }
+                    }
+                    else if(StringsAreEqual(RequestedInterface, StrLit("com.canonical.dbusmenu")))
+                    {
+                        for(u32 PropertyIndex = 0;
+                            PropertyIndex < MenuProperty_Count;
+                            ++PropertyIndex)
+                        {
+                            if(StringsAreEqual(RequestedProperty, StrLit(MenuPropertyNames[PropertyIndex])))
+                            {
+                                AppendMenuProperty(PropertyIndex);
                             }
                         }
                     }
